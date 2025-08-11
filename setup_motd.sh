@@ -1,54 +1,63 @@
 sudo tee /etc/profile.d/armbian-motd-unified.sh >/dev/null <<'EOF'
-# Purpose: Show full Armbian MOTD via profile for Tailscale SSH, without duplicating it on normal SSH.
+#!/usr/bin/env bash
+# ==============================================================================
+# Armbian MOTD (unified)
+# ------------------------------------------------------------------------------
+# Purpose:
+#   Show Armbian's dynamic MOTD without duplicates on ssh tailscale and classic ssh.
+#
 # Behavior:
-#  - Interactive shells only.
-#  - Tailscale SSH: always run ALL /etc/update-motd.d scripts (header + sysinfo + tips, etc.).
-#  - Normal SSH: run only if PAM (pam_motd) did not already print (/run/motd.dynamic absent or empty).
-# Notes:
-#  - Sourced by the shell; no shebang needed.
-#  - Avoids double-run inside the same shell session.
+#   - Runs only for interactive shells.
+#   - Tailscale SSH sessions (PAM bypassed): always show MOTD.
+#   - Regular SSH sessions: show only if /run/motd.dynamic is missing or stale.
+#
+# Tunables:
+#   MOTD_DIR              Directory containing update-motd.d scripts
+#   MOTD_FILE             Path to the dynamic MOTD file PAM writes
+#   MOTD_STALE_SECONDS    Consider MOTD stale after this many seconds
+# ==============================================================================
 
-# Session guard to prevent re-entry
-[ -n "$_ARM_MOTD_SHOWN" ] && return 0
-_ARM_MOTD_SHOWN=1
-export _ARM_MOTD_SHOWN
+# ----------------------------- Global variables -------------------------------
+MOTD_DIR="/etc/update-motd.d"
+MOTD_FILE="/run/motd.dynamic"
+MOTD_STALE_SECONDS=10
 
-UPDATE_MOTD_DIR="/etc/update-motd.d"
-PAM_MOTD_MARKER="/run/motd.dynamic"
-
+# ------------------------------ Helper functions ------------------------------
 is_interactive() {
   case "$-" in *i*) return 0 ;; *) return 1 ;; esac
 }
 
-pam_already_printed() {
-  [ -s "$PAM_MOTD_MARKER" ]
+show_armbian_motd() {
+  if RUN_PARTS_BIN="$(command -v run-parts 2>/dev/null)"; then
+    "$RUN_PARTS_BIN" "$MOTD_DIR" 2>/dev/null || true
+  else
+    for script in "$MOTD_DIR"/*; do
+      [ -f "$script" ] && [ -x "$script" ] && "$script" 2>/dev/null || true
+    done
+  fi
 }
 
-show_full_motd() {
-  [ -d "$UPDATE_MOTD_DIR" ] || return 0
-
-  if command -v run-parts >/dev/null 2>&1; then
-    run-parts "$UPDATE_MOTD_DIR" 2>/dev/null || true
+motd_is_stale() {
+  if [ ! -f "$MOTD_FILE" ]; then
     return 0
   fi
-
-  # Fallback if run-parts is unavailable
-  for f in "$UPDATE_MOTD_DIR"/*; do
-    [ -x "$f" ] || continue
-    "$f" 2>/dev/null || true
-  done
+  local now epoch_file age
+  now=$(date +%s)
+  epoch_file=$(stat -c %Y "$MOTD_FILE" 2>/dev/null || echo 0)
+  age=$(( now - epoch_file ))
+  (( age > MOTD_STALE_SECONDS ))
 }
 
-is_interactive || return 0
-
-# Tailscale sets TAILSCALE_SSH=1 for Tailscale-SSH sessions
-if [ -n "${TAILSCALE_SSH:-}" ]; then
-  show_full_motd
-elif [ -n "${SSH_CONNECTION:-}" ]; then
-  # Normal SSH: avoid duplicates if PAM already printed MOTD
-  pam_already_printed || show_full_motd
+# --------------------------------- Main logic ---------------------------------
+if is_interactive; then
+  if [ -n "$TAILSCALE_SSH" ]; then
+    show_armbian_motd
+  elif [ -n "$SSH_CONNECTION" ]; then
+    if motd_is_stale; then
+      show_armbian_motd
+    fi
+  fi
 fi
 EOF
 
 sudo chmod +x /etc/profile.d/armbian-motd-unified.sh
-
