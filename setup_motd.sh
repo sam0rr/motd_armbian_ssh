@@ -33,7 +33,6 @@ show_full_motd() {
   fi
 
   # Fallback if run-parts is unavailable
-  # Execute all executable files in lexical order
   for f in "$UPDATE_MOTD_DIR"/*; do
     [ -x "$f" ] || continue
     "$f" 2>/dev/null || true
