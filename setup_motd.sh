@@ -76,5 +76,5 @@ EOF
 
 sudo chmod +x /etc/profile.d/armbian-motd-unified.sh
 
-echo "[INFO] MOTD script installed successfully!"
+echo "[INFO] MOTD script installed successfully"
 echo "[INFO] To uninstall: sudo rm -f /etc/profile.d/armbian-motd-unified.sh"
