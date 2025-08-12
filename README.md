@@ -1,6 +1,11 @@
 # Armbian Unified MOTD Installer
 
-Installs a unified Armbian MOTD handler that works for both Tailscale SSH and normal SSH sessions, avoids duplicates, and refreshes automatically.
+Fixes missing MOTD (Message of the Day) on Armbian systems when connecting via Tailscale SSH. In Debian Trixie and other systems, Tailscale SSH bypasses PAM authentication, which normally displays the MOTD, leaving you with a blank login screen.
+
+This script creates a unified handler that:
+- Detects Tailscale SSH connections and always shows MOTD
+- For regular SSH, only refreshes MOTD if it's stale (older than 10 seconds)
+- Prevents duplicate MOTD displays
 
 ## Install
 
